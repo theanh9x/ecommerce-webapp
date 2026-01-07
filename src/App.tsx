@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
+import Categories from './components/Categories';
 import Products from './components/Products';
 import Purchases from './components/Purchases';
 import Sales from './components/Sales';
@@ -34,6 +35,8 @@ function AppContent() {
     switch (currentPage) {
       case 'dashboard':
         return <Dashboard />;
+      case 'categories':
+        return <Categories />;
       case 'products':
         return <Products />;
       case 'purchases':

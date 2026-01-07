@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   LogOut,
+  Tags,
 } from 'lucide-react';
 
 type NavItem = {
@@ -22,6 +23,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Tổng quan', icon: <LayoutDashboard size={20} /> },
+  { id: 'categories', label: 'Danh mục', icon: <Tags size={20} /> },
   { id: 'products', label: 'Sản phẩm', icon: <Package size={20} /> },
   { id: 'purchases', label: 'Nhập hàng', icon: <ShoppingCart size={20} /> },
   { id: 'sales', label: 'Bán hàng', icon: <TrendingUp size={20} /> },

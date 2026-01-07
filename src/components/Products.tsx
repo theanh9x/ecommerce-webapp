@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Edit2, Trash2, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Download, Upload } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 type Category = {
@@ -28,6 +28,8 @@ export default function Products() {
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
@@ -146,9 +148,100 @@ export default function Products() {
 
   const filteredProducts = products.filter(
     (p) =>
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchTerm.toLowerCase())
+      (p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.sku.toLowerCase().includes(searchTerm.toLowerCase())) &&
+      (selectedCategory === '' || p.category_id === selectedCategory)
   );
+
+  const exportToExcel = () => {
+    const headers = ['Mã SKU', 'Tên sản phẩm', 'Danh mục', 'Đơn vị', 'Giá vốn', 'Giá bán', 'Tồn kho', 'Mức tối thiểu'];
+    const rows = filteredProducts.map((p) => [
+      p.sku,
+      p.name,
+      p.categories?.name || '',
+      p.unit,
+      p.cost_price,
+      p.selling_price,
+      p.stock_quantity,
+      p.min_stock_level,
+    ]);
+
+    const csv = [
+      headers.join(','),
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
+    ].join('\n');
+
+    const element = document.createElement('a');
+    element.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv));
+    element.setAttribute('download', `products_${new Date().getTime()}.csv`);
+    element.style.display = 'none';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  const handleImportExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const text = await file.text();
+    const lines = text.trim().split('\n');
+    const headers = lines[0].split(',').map((h) => h.trim().replace(/"/g, ''));
+
+    const importedProducts = lines.slice(1).map((line) => {
+      const values = line.split(',').map((v) => v.trim().replace(/"/g, ''));
+      return {
+        sku: values[0],
+        name: values[1],
+        category_name: values[2],
+        unit: values[3] || 'cái',
+        cost_price: parseFloat(values[4]) || 0,
+        selling_price: parseFloat(values[5]) || 0,
+        stock_quantity: parseFloat(values[6]) || 0,
+        min_stock_level: parseFloat(values[7]) || 0,
+      };
+    });
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const product of importedProducts) {
+      try {
+        let categoryId = '';
+        if (product.category_name) {
+          const category = categories.find((c) => c.name === product.category_name);
+          categoryId = category?.id || '';
+        }
+
+        const { error } = await supabase.from('products').insert([
+          {
+            name: product.name,
+            sku: product.sku,
+            category_id: categoryId || null,
+            unit: product.unit,
+            cost_price: product.cost_price,
+            selling_price: product.selling_price,
+            stock_quantity: product.stock_quantity,
+            min_stock_level: product.min_stock_level,
+          },
+        ]);
+
+        if (error) {
+          errorCount++;
+        } else {
+          successCount++;
+        }
+      } catch (err) {
+        errorCount++;
+      }
+    }
+
+    alert(`Nhập dữ liệu hoàn thành!\nThành công: ${successCount}, Lỗi: ${errorCount}`);
+    loadProducts();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -158,31 +251,70 @@ export default function Products() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-800">Quản lý sản phẩm</h2>
-        {canEdit && (
+        <div className="flex gap-2">
           <button
-            onClick={() => {
-              setEditingProduct(null);
-              resetForm();
-              setShowModal(true);
-            }}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+            onClick={exportToExcel}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
           >
-            <Plus size={20} />
-            Thêm sản phẩm
+            <Download size={20} />
+            Xuất Excel
           </button>
-        )}
+          {canEdit && (
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                <Upload size={20} />
+                Nhập Excel
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleImportExcel}
+                style={{ display: 'none' }}
+              />
+              <button
+                onClick={() => {
+                  setEditingProduct(null);
+                  resetForm();
+                  setShowModal(true);
+                }}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                <Plus size={20} />
+                Thêm sản phẩm
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Search className="text-gray-400" size={20} />
-          <input
-            type="text"
-            placeholder="Tìm kiếm sản phẩm..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
+        <div className="flex flex-col md:flex-row gap-3 mb-4">
+          <div className="flex-1 flex items-center gap-2">
+            <Search className="text-gray-400" size={20} />
+            <input
+              type="text"
+              placeholder="Tìm kiếm theo tên hoặc SKU..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="">Tất cả danh mục</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="overflow-x-auto">
